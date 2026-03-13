@@ -5,7 +5,7 @@ A thin wrapper around [Gin](https://github.com/gin-gonic/gin) that generates an 
 ## Installation
 
 ```go
-import "github.com/bfree-africa/auth-service/apidoc"
+import "github.com/Adebayobenjamin/apidoc"
 ```
 
 No external dependencies beyond Gin and the Go standard library.
@@ -17,7 +17,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "github.com/bfree-africa/auth-service/apidoc"
+    "github.com/Adebayobenjamin/apidoc"
 )
 
 func main() {
@@ -51,7 +51,7 @@ r := apidoc.New(gin.Default(), apidoc.Info{
     Title:       "Auth Service API",
     Description: "Authentication and authorization service.",
     Version:     "1.0.0",
-    Contact:     &apidoc.Contact{Name: "BFree Africa", Email: "support@bfree.africa"},
+    Contact:     &apidoc.Contact{Name: "Your Name", Email: "you@example.com"},
 })
 ```
 
@@ -305,7 +305,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "github.com/bfree-africa/auth-service/apidoc"
+    "github.com/Adebayobenjamin/apidoc"
 )
 
 type LoginRequest struct {

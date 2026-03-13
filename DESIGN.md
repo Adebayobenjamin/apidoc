@@ -26,7 +26,7 @@ r := apidoc.New(gin.Default(), apidoc.Info{
     Title:       "Auth Service API",
     Description: "Authentication and authorization service.",
     Version:     "1.0.0",
-    Contact:     &apidoc.Contact{Name: "BFree Africa", Email: "support@bfree.africa"},
+    Contact:     &apidoc.Contact{Name: "Your Name", Email: "you@example.com"},
 })
 ```
 

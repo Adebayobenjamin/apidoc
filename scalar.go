@@ -30,17 +30,29 @@ func defaultScalarConfig() ScalarConfig {
 	}
 }
 
-// ServeDocs registers routes to serve the Scalar API reference UI and the OpenAPI spec.
+// ServeDocs generates the OpenAPI spec, writes it to {basePath}/openapi.json
+// relative to the working directory, and registers Gin routes to serve both
+// the spec and the Scalar API reference UI.
+//
 // It mounts:
-//   - GET {basePath}           → Scalar UI
+//   - GET {basePath}              → Scalar UI
 //   - GET {basePath}/openapi.json → generated OpenAPI JSON spec
-func (r *Router) ServeDocs(basePath string, configs ...ScalarConfig) {
+//
+// The file is written once at startup; the served endpoint always reflects
+// the current spec (regenerated on each request).
+func (r *Router) ServeDocs(basePath string, configs ...ScalarConfig) error {
 	cfg := defaultScalarConfig()
 	if len(configs) > 0 {
 		cfg = mergeConfig(cfg, configs[0])
 	}
 
 	basePath = strings.TrimRight(basePath, "/")
+
+	// Write the spec to disk.
+	filePath := strings.TrimPrefix(basePath, "/") + "/openapi.json"
+	if err := r.SaveDocs(filePath); err != nil {
+		return fmt.Errorf("apidoc: ServeDocs failed to save spec: %w", err)
+	}
 
 	// Serve the OpenAPI spec as JSON.
 	r.engine.GET(basePath+"/openapi.json", func(c *gin.Context) {
@@ -53,6 +65,8 @@ func (r *Router) ServeDocs(basePath string, configs ...ScalarConfig) {
 	r.engine.GET(basePath, func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 	})
+
+	return nil
 }
 
 func mergeConfig(base, override ScalarConfig) ScalarConfig {

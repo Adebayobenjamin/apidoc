@@ -4,11 +4,17 @@ A thin wrapper around [Gin](https://github.com/gin-gonic/gin) that generates an 
 
 ## Installation
 
+```bash
+go get github.com/Adebayobenjamin/apidoc@v1.0.0
+```
+
+Then import in your code:
+
 ```go
 import "github.com/Adebayobenjamin/apidoc"
 ```
 
-No external dependencies beyond Gin and the Go standard library.
+Requires Go 1.23+ and Gin v1.10+. No other external dependencies.
 
 ## Quick Start
 

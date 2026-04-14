@@ -151,13 +151,15 @@ func (r *Router) Use(middleware ...gin.HandlerFunc) *Router {
 	return r
 }
 
-func (r *Router) addEndpoint(method, path string, tags []string) *Endpoint {
+func (r *Router) addEndpoint(method, path string, tags []string, handlers []gin.HandlerFunc) *Endpoint {
 	ep := &Endpoint{
 		router: r,
 		method: method,
 		path:   path,
 		tags:   tags,
 	}
+	// Extract doc metadata from any Docs() middleware in the handler chain.
+	applyDocOptions(ep, handlers)
 	r.endpoints = append(r.endpoints, ep)
 	return ep
 }
@@ -166,27 +168,27 @@ func (r *Router) addEndpoint(method, path string, tags []string) *Endpoint {
 
 func (r *Router) POST(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	r.engine.POST(path, handlers...)
-	return r.addEndpoint("POST", path, nil)
+	return r.addEndpoint("POST", path, nil, handlers)
 }
 
 func (r *Router) GET(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	r.engine.GET(path, handlers...)
-	return r.addEndpoint("GET", path, nil)
+	return r.addEndpoint("GET", path, nil, handlers)
 }
 
 func (r *Router) PUT(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	r.engine.PUT(path, handlers...)
-	return r.addEndpoint("PUT", path, nil)
+	return r.addEndpoint("PUT", path, nil, handlers)
 }
 
 func (r *Router) DELETE(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	r.engine.DELETE(path, handlers...)
-	return r.addEndpoint("DELETE", path, nil)
+	return r.addEndpoint("DELETE", path, nil, handlers)
 }
 
 func (r *Router) PATCH(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	r.engine.PATCH(path, handlers...)
-	return r.addEndpoint("PATCH", path, nil)
+	return r.addEndpoint("PATCH", path, nil, handlers)
 }
 
 // Tag sets the default tag for all endpoints in this group.
@@ -210,7 +212,7 @@ func (g *Group) Use(middleware ...gin.HandlerFunc) *Group {
 	return g
 }
 
-func (g *Group) addEndpoint(method, path string) *Endpoint {
+func (g *Group) addEndpoint(method, path string, handlers []gin.HandlerFunc) *Endpoint {
 	var tags []string
 	if g.tag != "" {
 		tags = []string{g.tag}
@@ -222,6 +224,8 @@ func (g *Group) addEndpoint(method, path string) *Endpoint {
 		path:   fullPath,
 		tags:   tags,
 	}
+	// Extract doc metadata from any Docs() middleware in the handler chain.
+	applyDocOptions(ep, handlers)
 	g.router.endpoints = append(g.router.endpoints, ep)
 	return ep
 }
@@ -230,25 +234,25 @@ func (g *Group) addEndpoint(method, path string) *Endpoint {
 
 func (g *Group) POST(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	g.ginGroup.POST(path, handlers...)
-	return g.addEndpoint("POST", path)
+	return g.addEndpoint("POST", path, handlers)
 }
 
 func (g *Group) GET(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	g.ginGroup.GET(path, handlers...)
-	return g.addEndpoint("GET", path)
+	return g.addEndpoint("GET", path, handlers)
 }
 
 func (g *Group) PUT(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	g.ginGroup.PUT(path, handlers...)
-	return g.addEndpoint("PUT", path)
+	return g.addEndpoint("PUT", path, handlers)
 }
 
 func (g *Group) DELETE(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	g.ginGroup.DELETE(path, handlers...)
-	return g.addEndpoint("DELETE", path)
+	return g.addEndpoint("DELETE", path, handlers)
 }
 
 func (g *Group) PATCH(path string, handlers ...gin.HandlerFunc) *Endpoint {
 	g.ginGroup.PATCH(path, handlers...)
-	return g.addEndpoint("PATCH", path)
+	return g.addEndpoint("PATCH", path, handlers)
 }

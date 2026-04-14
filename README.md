@@ -108,16 +108,86 @@ r.AddParam("XUserDomain", apidoc.Param{
 
 ### Defining Routes
 
-Routes work exactly like Gin, with chained metadata:
+`apidoc` supports two patterns for attaching documentation to routes. Both produce the same OpenAPI output — choose whichever fits your style, or mix them in the same project.
+
+#### Option A: Builder Pattern
+
+Chain metadata methods on the return value of `POST`, `GET`, etc.:
 
 ```go
-r.POST("/login", loginHandler).
+auth.POST("/login", loginHandler).
     Summary("Login").
     Description("Authenticate a user and return tokens.").
     Body(LoginRequest{}).
     Response(200, LoginResponse{}, "Login successful").
     ResponseRef(400, "BadRequest")
 ```
+
+#### Option B: Middleware Pattern
+
+Pass documentation as a no-op middleware using `apidoc.Docs()`:
+
+```go
+auth.POST("/login",
+    apidoc.Docs(
+        apidoc.Summary("Login"),
+        apidoc.Description("Authenticate a user and return tokens."),
+        apidoc.Body(LoginRequest{}),
+        apidoc.Response(200, LoginResponse{}, "Login successful"),
+        apidoc.ResponseRef(400, "BadRequest"),
+    ),
+    loginHandler,
+)
+```
+
+`apidoc.Docs()` returns a `gin.HandlerFunc` that does nothing at runtime. The router extracts the metadata during route registration.
+
+This pattern is useful when you want to keep documentation in separate files:
+
+```go
+// docs/login.go
+package docs
+
+import (
+    "github.com/Adebayobenjamin/apidoc"
+    "github.com/gin-gonic/gin"
+)
+
+func Login() gin.HandlerFunc {
+    return apidoc.Docs(
+        apidoc.Summary("Login"),
+        apidoc.Description("Authenticate a user and return tokens."),
+        apidoc.Body(LoginRequest{}),
+        apidoc.Response(200, LoginResponse{}, "Login successful"),
+        apidoc.ResponseRef(400, "BadRequest"),
+    )
+}
+
+// router.go
+auth.POST("/login", docs.Login(), loginHandler)
+```
+
+#### Available Doc Options
+
+These functions work with both `apidoc.Docs()` and as methods on `*Endpoint`:
+
+| Function / Method | Description |
+|---|---|
+| `Summary(s)` | Short summary |
+| `Description(d)` | Detailed description |
+| `Tags(t...)` | Override group tags |
+| `OperationID(id)` | Custom operation ID (auto-generated if omitted) |
+| `Body(dto)` | Request body struct |
+| `BodyExample(ex)` | Single example for the request body |
+| `BodyExamples(map[string]any)` | Named examples (e.g. `"crmLogin"`, `"adminLogin"`) |
+| `Response(code, dto, desc)` | Response with struct schema |
+| `ResponseRef(code, name)` | Reference a reusable response |
+| `PathParam(name, desc, example)` | Document a path parameter |
+| `QueryParam(name, type, desc, example)` | Document a query parameter |
+| `HeaderParam(name, type, desc, example)` | Document a header parameter |
+| `ParamRef(name)` | Reference a reusable parameter |
+| `Security(scheme)` | Require a security scheme |
+| `Deprecated()` | Mark as deprecated |
 
 ### Groups
 
@@ -127,15 +197,21 @@ Groups inherit path prefixes. Use `.Tag()` to set a default tag for all endpoint
 v1 := r.Group("/api/v1")
 auth := v1.Group("/auth").Tag("Authentication")
 
+// Builder pattern
 auth.POST("/login", loginHandler).
     Summary("Login").
     Body(LoginRequest{}).
     Response(200, LoginResponse{}, "Login successful")
 
-auth.POST("/forgot-password", forgotHandler).
-    Summary("Request password reset").
-    Body(ForgotPasswordRequest{}).
-    Response(200, ForgotPasswordResponse{}, "OTP sent")
+// Middleware pattern
+auth.POST("/forgot-password",
+    apidoc.Docs(
+        apidoc.Summary("Request password reset"),
+        apidoc.Body(ForgotPasswordRequest{}),
+        apidoc.Response(200, ForgotPasswordResponse{}, "OTP sent"),
+    ),
+    forgotHandler,
+)
 ```
 
 ### Middleware
@@ -146,10 +222,20 @@ Middleware passes through to Gin — `apidoc` does not interfere:
 // On a group
 auth.Use(middleware.RequiresAuth(jwtService, userService))
 
-// Or inline on a route
+// Builder pattern with inline middleware
 auth.POST("/validate", middleware.RequiresAuth(jwtService, userService), handler).
     Summary("Validate permissions").
     Security("bearerAuth")
+
+// Middleware pattern with inline middleware
+auth.POST("/validate",
+    apidoc.Docs(
+        apidoc.Summary("Validate permissions"),
+        apidoc.Security("bearerAuth"),
+    ),
+    middleware.RequiresAuth(jwtService, userService),
+    handler,
+)
 ```
 
 ### Generating the Spec
@@ -178,31 +264,9 @@ You can also access the underlying Gin engine directly:
 engine := r.Engine()
 ```
 
-## Endpoint Builder
+## Operation IDs
 
-Every route method (`POST`, `GET`, `PUT`, `DELETE`, `PATCH`) returns an `*Endpoint` for chaining:
-
-| Method | Description |
-|---|---|
-| `.Summary(s)` | Short summary |
-| `.Description(d)` | Detailed description |
-| `.Tags(t...)` | Override group tags |
-| `.OperationID(id)` | Custom operation ID (auto-generated if omitted) |
-| `.Body(dto)` | Request body struct |
-| `.BodyExample(ex)` | Single example for the request body |
-| `.BodyExamples(map[string]any)` | Named examples (e.g. `"crmLogin"`, `"adminLogin"`) |
-| `.Response(code, dto, desc)` | Response with struct schema |
-| `.ResponseRef(code, name)` | Reference a reusable response |
-| `.ResponseExample(code, ex)` | Single example for a response |
-| `.ResponseExamples(code, map[string]any)` | Named examples for a response |
-| `.PathParam(name, desc, example)` | Document a path parameter |
-| `.QueryParam(name, type, desc, example)` | Document a query parameter |
-| `.HeaderParam(name, type, desc, example)` | Document a header parameter |
-| `.ParamRef(name)` | Reference a reusable parameter |
-| `.Security(scheme)` | Require a security scheme |
-| `.Deprecated()` | Mark as deprecated |
-
-**Operation IDs** are auto-generated from the HTTP method and path (e.g. `POST /auth/login` → `postAuthLogin`). Override with `.OperationID("custom")`.
+Operation IDs are auto-generated from the HTTP method and path (e.g. `POST /auth/login` → `postAuthLogin`). Override with `.OperationID("custom")` or `apidoc.OperationID("custom")`.
 
 ## Schema Generation
 
@@ -324,6 +388,14 @@ type LoginResponse struct {
     Refresh string `json:"refresh" description:"JWT refresh token" example:"eyJhbGci..."`
 }
 
+type ForgotPasswordRequest struct {
+    Email string `json:"email" binding:"required,email" description:"Email to send reset OTP to" example:"john@company.com"`
+}
+
+type ForgotPasswordResponse struct {
+    Sent bool `json:"sent" description:"Whether the OTP was sent" example:"true"`
+}
+
 type ErrorResponse struct {
     Status  string `json:"status"  example:"error"`
     Message string `json:"message" example:"invalid credentials"`
@@ -333,7 +405,7 @@ func main() {
     r := apidoc.New(gin.Default(), apidoc.Info{
         Title:   "Auth Service API",
         Version: "1.0.0",
-        Contact: &apidoc.Contact{Name: "BFree Africa", Email: "support@bfree.africa"},
+        Contact: &apidoc.Contact{Name: "Your Name", Email: "you@example.com"},
     })
 
     r.Server("http://localhost:8080/api/v1", "Local")
@@ -343,6 +415,7 @@ func main() {
 
     auth := r.Group("/api/v1/auth").Tag("Authentication")
 
+    // Builder pattern — chain methods after the route
     auth.POST("/login", loginHandler).
         Summary("Login").
         Description("Authenticate a user and return tokens.").
@@ -350,8 +423,19 @@ func main() {
         Response(200, LoginResponse{}, "Login successful").
         ResponseRef(400, "BadRequest")
 
+    // Middleware pattern — pass docs as a handler
+    auth.POST("/forgot-password",
+        apidoc.Docs(
+            apidoc.Summary("Request password reset"),
+            apidoc.Description("Sends an OTP to the user's email."),
+            apidoc.Body(ForgotPasswordRequest{}),
+            apidoc.Response(200, ForgotPasswordResponse{}, "OTP sent"),
+            apidoc.ResponseRef(400, "BadRequest"),
+        ),
+        forgotPasswordHandler,
+    )
+
     r.ServeDocs("/docs")
-    r.SaveDocs("docs/openapi.json")
     r.Run(":8080")
 }
 ```

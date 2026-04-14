@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,15 +19,21 @@ type ScalarConfig struct {
 	HideModels        bool   // Hide schema models section
 	ShowSidebar       bool   // Show navigation sidebar (default: true)
 	CustomCSS         string // Additional CSS to inject
+	// FallbackToFile, when true, causes ServeDocs to fall back to serving the
+	// previously generated openapi.json on disk if regeneration fails at
+	// startup or at request time. Defaults to true.
+	FallbackToFile *bool
 }
 
 func defaultScalarConfig() ScalarConfig {
+	t := true
 	return ScalarConfig{
 		Theme:             "purple",
 		DarkMode:          true,
 		Layout:            "modern",
 		DefaultHttpClient: "curl",
 		ShowSidebar:       true,
+		FallbackToFile:    &t,
 	}
 }
 
@@ -48,14 +55,40 @@ func (r *Router) ServeDocs(basePath string, configs ...ScalarConfig) error {
 
 	basePath = strings.TrimRight(basePath, "/")
 
-	// Write the spec to disk.
-	filePath := strings.TrimPrefix(basePath, "/") + "/openapi.json"
-	if err := r.SaveDocs(filePath); err != nil {
-		return fmt.Errorf("apidoc: ServeDocs failed to save spec: %w", err)
+	fallback := true
+	if cfg.FallbackToFile != nil {
+		fallback = *cfg.FallbackToFile
 	}
 
-	// Serve the OpenAPI spec as JSON.
+	// Write the spec to disk.
+	filePath := strings.TrimPrefix(basePath, "/") + "/openapi.json"
+	saveErr := r.SaveDocs(filePath)
+	if saveErr != nil {
+		if !fallback {
+			return fmt.Errorf("apidoc: ServeDocs failed to save spec: %w", saveErr)
+		}
+		// Fallback: only acceptable if an existing spec file is on disk.
+		if _, statErr := os.Stat(filePath); statErr != nil {
+			return fmt.Errorf("apidoc: ServeDocs failed to save spec and no existing file at %s: %w", filePath, saveErr)
+		}
+	}
+
+	// Serve the OpenAPI spec as JSON. Falls back to the on-disk file if
+	// regeneration fails and fallback is enabled.
 	r.engine.GET(basePath+"/openapi.json", func(c *gin.Context) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				if fallback {
+					if data, err := os.ReadFile(filePath); err == nil {
+						c.Data(http.StatusOK, "application/json", data)
+						return
+					}
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": fmt.Sprintf("apidoc: failed to generate spec: %v", rec),
+				})
+			}
+		}()
 		spec := r.generateSpec()
 		c.JSON(http.StatusOK, spec)
 	})

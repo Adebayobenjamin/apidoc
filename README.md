@@ -323,6 +323,70 @@ Tags from `binding` or `validate` are translated automatically:
 | `oneof=a b c` | `enum: ["a","b","c"]` |
 | `len=N` | `minLength: N, maxLength: N` |
 
+## Monorepo — Merging Multiple Specs
+
+When you have multiple services each producing their own `openapi.json`, `Merge` combines them into a single spec:
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/Adebayobenjamin/apidoc"
+)
+
+func main() {
+    combined, err := apidoc.Merge(apidoc.Info{
+        Title:   "Platform API",
+        Version: "1.0.0",
+    },
+        apidoc.SourceFile("../auth-service/docs/openapi.json"),
+        apidoc.SourceFile("../user-service/docs/openapi.json"),
+        apidoc.SourceFile("../billing-service/docs/openapi.json", "billing"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    combined.ServeDocs("/docs")
+    combined.Run(":9000")
+}
+```
+
+### Namespace
+
+Each source has a namespace used to resolve schema-name collisions. Pass it explicitly to `SourceFile`:
+
+```go
+apidoc.SourceFile("../auth-service/docs/openapi.json", "auth")
+```
+
+Or let `apidoc` infer it from the parent directory (e.g. `../auth-service/docs/openapi.json` → `auth-service`).
+
+### Collision Handling
+
+| Conflict | Resolution |
+|---|---|
+| **Schema name** (e.g. both services define `LoginRequest`) | Prefixed with namespace → `AuthLoginRequest`, `UserServiceLoginRequest`. All `$ref`s get rewritten. Non-colliding schemas keep their original names. |
+| **Path + method** (e.g. both services register `POST /health`) | Returns an error from `Merge` |
+| **Tag name** | First source wins; duplicates are dropped |
+| **Server URL** | Deduped |
+| **Reusable response/parameter/security scheme** | Merged by name; later sources override |
+
+### Attaching to an Existing Engine
+
+If you want to serve merged docs alongside other routes:
+
+```go
+engine := gin.Default()
+combined, _ := apidoc.MergeOn(engine, info,
+    apidoc.SourceFile("auth/openapi.json"),
+    apidoc.SourceFile("billing/openapi.json"),
+)
+combined.ServeDocs("/docs")
+engine.Run(":8080")
+```
+
 ## Scalar UI Configuration
 
 Customize the docs UI appearance:

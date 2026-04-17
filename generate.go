@@ -31,6 +31,10 @@ func (r *Router) SaveDocs(path string) error {
 }
 
 func (r *Router) generateSpec() map[string]any {
+	if r.prebuiltSpec != nil {
+		return r.prebuiltSpec
+	}
+
 	sc := newSchemaCollector()
 
 	spec := map[string]any{

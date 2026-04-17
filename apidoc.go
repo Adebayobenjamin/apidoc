@@ -66,6 +66,9 @@ type Router struct {
 	responses       map[string]reusableResponse
 	params          map[string]Param
 	endpoints       []*Endpoint
+	// prebuiltSpec, when non-nil, is returned by generateSpec() in place
+	// of building from endpoints. Used by Merge().
+	prebuiltSpec map[string]any
 }
 
 // Group wraps a gin.RouterGroup and collects OpenAPI metadata.

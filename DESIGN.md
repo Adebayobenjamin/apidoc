@@ -117,7 +117,49 @@ auth.POST("/validate", middleware.RequiresAuth(jwtService, userService), handler
     Security("bearerAuth")
 ```
 
-### 10. Generate Docs & Serve UI
+### 10. Middleware-Style Documentation (Alternative to Builder Pattern)
+
+Instead of chaining methods on the return value of `POST`/`GET`/etc., you can pass documentation as a middleware using `apidoc.Docs()`:
+
+```go
+auth.POST("/login",
+    apidoc.Docs(
+        apidoc.Summary("Login"),
+        apidoc.Description("Authenticate a user and return tokens."),
+        apidoc.Body(dtos.LoginRequest{}),
+        apidoc.Response(200, dtos.LoginCrmResponse{}, "Login successful"),
+        apidoc.ResponseRef(401, "Unauthorized"),
+        apidoc.Security("bearerAuth"),
+    ),
+    authHandler.Login,
+)
+```
+
+`apidoc.Docs()` returns a `gin.HandlerFunc` that is a **no-op at runtime** — it does nothing when requests come in. The `apidoc.Router` detects it during route registration, extracts the metadata, and uses it to build the endpoint spec.
+
+Both patterns produce the **same** `openapi.json`. Choose whichever style you prefer — they can even be mixed in the same project.
+
+**Available option functions:**
+
+| Function | Description |
+|---|---|
+| `apidoc.Summary(s)` | Short summary |
+| `apidoc.Description(d)` | Detailed description |
+| `apidoc.Tags(t...)` | Override group tags |
+| `apidoc.OperationID(id)` | Custom operation ID |
+| `apidoc.Body(dto)` | Request body struct |
+| `apidoc.BodyExample(ex)` | Single request body example |
+| `apidoc.BodyExamples(map[string]any)` | Named request body examples |
+| `apidoc.Response(code, dto, desc)` | Response with struct schema |
+| `apidoc.ResponseRef(code, name)` | Reference a reusable response |
+| `apidoc.PathParam(name, desc, example)` | Path parameter |
+| `apidoc.QueryParam(name, type, desc, example)` | Query parameter |
+| `apidoc.HeaderParam(name, type, desc, example)` | Header parameter |
+| `apidoc.ParamRef(name)` | Reference a reusable parameter |
+| `apidoc.Security(scheme)` | Require a security scheme |
+| `apidoc.Deprecated()` | Mark as deprecated |
+
+### 11. Generate Docs & Serve UI
 
 ```go
 // Write the spec to disk (e.g. for CI, version control)
@@ -127,11 +169,12 @@ r.SaveDocs("docs/openapi.json")
 r.ServeDocs("/docs")
 ```
 
-`ServeDocs("/docs")` registers two Gin routes:
-- `GET /docs` → Scalar API reference UI (loaded from CDN)
-- `GET /docs/openapi.json` → the generated OpenAPI spec
+`ServeDocs("/docs")` does three things:
+1. Generates and writes `openapi.json` to the provided file path (first argument)
+2. Registers `GET /docs` → Scalar API reference UI (loaded from CDN)
+3. Registers `GET /docs/openapi.json` → serves the generated OpenAPI spec
 
-This replaces the need for a separate `docs/` package with embedded files.
+This replaces the need for a separate `docs/` package with embedded files. `SaveDocs()` remains available for cases where you only want the file (e.g. CI).
 
 **Default Scalar config:** purple theme, dark mode, modern layout, curl as default HTTP client.
 
@@ -156,7 +199,7 @@ r.ServeDocs("/docs", apidoc.ScalarConfig{
 | `ShowSidebar` | `bool` | `true` | Show navigation sidebar |
 | `CustomCSS` | `string` | `""` | Additional CSS to inject |
 
-### 11. Start Server (pass-through to Gin)
+### 12. Start Server (pass-through to Gin)
 
 ```go
 r.Run(":8080")
@@ -252,6 +295,7 @@ apidoc/
 ├── DESIGN.md       # This document
 ├── apidoc.go       # Router, Group, New(), Server(), SaveDocs(), Run()
 ├── endpoint.go     # Endpoint builder (fluent chain methods)
+├── options.go      # DocOption type and option functions for middleware-style docs
 ├── schema.go       # Struct → OpenAPI schema via reflection
 ├── generate.go     # Assembles the full OpenAPI spec and writes JSON
 └── scalar.go       # ServeDocs(), ScalarConfig, Scalar HTML template
@@ -307,7 +351,7 @@ func AuthRouter(router *gin.RouterGroup, ...) {
 }
 ```
 
-**After:**
+**After (builder pattern):**
 ```go
 func AuthRouter(router *apidoc.Group, ...) {
     auth := router.Group("/auth").Tag("Authentication")
@@ -327,7 +371,35 @@ func AuthRouter(router *apidoc.Group, ...) {
 }
 ```
 
-The only change: `*gin.RouterGroup` → `*apidoc.Group`, and chain metadata after each route.
+**After (middleware pattern):**
+```go
+func AuthRouter(router *apidoc.Group, ...) {
+    auth := router.Group("/auth").Tag("Authentication")
+
+    auth.POST("/login",
+        apidoc.Docs(
+            apidoc.Summary("Login"),
+            apidoc.Description("Authenticate a user and return tokens."),
+            apidoc.Body(dtos.LoginRequest{}),
+            apidoc.Response(200, dtos.LoginCrmResponse{}, "Login successful"),
+            apidoc.ResponseRef(401, "Unauthorized"),
+        ),
+        authHandler.Login,
+    )
+
+    auth.POST("/forgot-password",
+        apidoc.Docs(
+            apidoc.Summary("Request password reset"),
+            apidoc.Body(dtos.ForgotPasswordRequest{}),
+            apidoc.Response(200, dtos.ForgotPasswordResponse{}, "OTP sent"),
+            apidoc.ResponseRef(400, "BadRequest"),
+        ),
+        authHandler.ForgotPassword,
+    )
+}
+```
+
+The only change: `*gin.RouterGroup` → `*apidoc.Group`, and add metadata via either pattern.
 
 ---
 

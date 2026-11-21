@@ -285,11 +285,6 @@ func (r *Router) buildResponses(ep *Endpoint, sc *schemaCollector) map[string]an
 func (r *Router) buildComponents(sc *schemaCollector) map[string]any {
 	components := map[string]any{}
 
-	// Schemas from reflection.
-	if len(sc.schemas) > 0 {
-		components["schemas"] = sc.schemas
-	}
-
 	// Reusable responses.
 	if len(r.responses) > 0 {
 		responses := map[string]any{}
@@ -358,6 +353,9 @@ func (r *Router) buildComponents(sc *schemaCollector) map[string]any {
 		components["securitySchemes"] = schemes
 	}
 
+	if len(sc.schemas) > 0 {
+		components["schemas"] = sc.schemas
+	}
 	return components
 }
 

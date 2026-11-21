@@ -284,8 +284,11 @@ type LoginRequest struct {
 | Tag | Purpose | OpenAPI Output |
 |---|---|---|
 | `json:"name"` | Field name | `properties.name` |
-| `json:",omitempty"` | Optional field | Not in `required` array |
-| `binding:"required"` | Required field | Added to `required` array |
+| `json:",omitempty"` / `json:",omitzero"` | Optional field | Never in `required` |
+| `binding:"required"` | Required request field | In the request schema's `required` |
+| (no `omitempty`/`omitzero`) | Always encoded in a response | In the response schema's `required` |
+
+A struct used only in responses lists every field without `omitempty`/`omitzero` as required, because Go always encodes those. A struct used in any request body keeps the `binding:"required"` rule, so a shared type never gains a requirement it would reject on input.
 | `description:"..."` | Field description | `description` |
 | `example:"..."` | Example value | `example` |
 | `enum:"a,b,c"` | Allowed values | `enum: ["a","b","c"]` |

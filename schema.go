@@ -9,11 +9,51 @@ import (
 // schemaCollector tracks all referenced schemas so they can be placed
 // under components/schemas in the final spec.
 type schemaCollector struct {
-	schemas map[string]map[string]any
+	schemas          map[string]map[string]any
+	role             schemaRole
+	roles            map[string]schemaRole
+	requestRequired  map[string][]string
+	responseRequired map[string][]string
 }
 
+type schemaRole uint8
+
+const (
+	roleRequest schemaRole = 1 << iota
+	roleResponse
+)
+
 func newSchemaCollector() *schemaCollector {
-	return &schemaCollector{schemas: make(map[string]map[string]any)}
+	return &schemaCollector{
+		schemas:          make(map[string]map[string]any),
+		roles:            make(map[string]schemaRole),
+		requestRequired:  make(map[string][]string),
+		responseRequired: make(map[string][]string),
+	}
+}
+
+func (sc *schemaCollector) resolveAs(v any, role schemaRole) map[string]any {
+	prev := sc.role
+	sc.role = role
+	defer func() { sc.role = prev }()
+	return sc.resolve(v)
+}
+
+func (sc *schemaCollector) finalizeRequired() {
+	for name, schema := range sc.schemas {
+		if schema == nil {
+			continue
+		}
+		required := sc.responseRequired[name]
+		if roles := sc.roles[name]; roles == 0 || roles&roleRequest != 0 {
+			required = sc.requestRequired[name]
+		}
+		if len(required) > 0 {
+			schema["required"] = required
+		} else {
+			delete(schema, "required")
+		}
+	}
 }
 
 // resolve returns the OpenAPI schema for the given value.
@@ -41,9 +81,13 @@ func (sc *schemaCollector) resolveType(t reflect.Type) map[string]any {
 	case reflect.Struct:
 		name := t.Name()
 		if _, exists := sc.schemas[name]; !exists {
+			sc.roles[name] |= sc.role
 			// Placeholder to prevent infinite recursion.
 			sc.schemas[name] = nil
 			sc.schemas[name] = sc.structToSchema(t)
+		} else if sc.role != 0 && sc.roles[name]&sc.role == 0 {
+			sc.roles[name] |= sc.role
+			sc.structToSchema(t)
 		}
 		return map[string]any{"$ref": "#/components/schemas/" + name}
 
@@ -67,7 +111,7 @@ func (sc *schemaCollector) resolveType(t reflect.Type) map[string]any {
 
 func (sc *schemaCollector) structToSchema(t reflect.Type) map[string]any {
 	properties := map[string]any{}
-	var required []string
+	var requestRequired, responseRequired []string
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -89,10 +133,15 @@ func (sc *schemaCollector) structToSchema(t reflect.Type) map[string]any {
 
 		prop := sc.fieldToProperty(field)
 
-		// Required: from binding tag, unless omitempty is set.
-		binding := field.Tag.Get("binding")
-		if containsTagValue(binding, "required") && !containsOption(jsonOpts, "omitempty") {
-			required = append(required, name)
+		// Required: in requests from the binding tag, in responses from the
+		// json tag (Go always encodes a field without omitempty/omitzero).
+		// Never when omitempty is set.
+		optional := containsOption(jsonOpts, "omitempty") || containsOption(jsonOpts, "omitzero")
+		if !optional {
+			responseRequired = append(responseRequired, name)
+			if containsTagValue(field.Tag.Get("binding"), "required") {
+				requestRequired = append(requestRequired, name)
+			}
 		}
 
 		// Description tag.
@@ -125,14 +174,12 @@ func (sc *schemaCollector) structToSchema(t reflect.Type) map[string]any {
 		properties[name] = prop
 	}
 
-	schema := map[string]any{
+	sc.requestRequired[t.Name()] = requestRequired
+	sc.responseRequired[t.Name()] = responseRequired
+	return map[string]any{
 		"type":       "object",
 		"properties": properties,
 	}
-	if len(required) > 0 {
-		schema["required"] = required
-	}
-	return schema
 }
 
 func (sc *schemaCollector) fieldToProperty(field reflect.StructField) map[string]any {

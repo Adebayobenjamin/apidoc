@@ -207,7 +207,7 @@ func (r *Router) buildParams(ep *Endpoint) []any {
 }
 
 func (r *Router) buildRequestBody(ep *Endpoint, sc *schemaCollector) map[string]any {
-	schema := sc.resolve(ep.body)
+	schema := sc.resolveAs(ep.body, roleRequest)
 
 	content := map[string]any{
 		"schema": schema,
@@ -255,7 +255,7 @@ func (r *Router) buildResponses(ep *Endpoint, sc *schemaCollector) map[string]an
 
 		if resp.body != nil {
 			content := map[string]any{
-				"schema": sc.resolve(resp.body),
+				"schema": sc.resolveAs(resp.body, roleResponse),
 			}
 			if resp.example != nil {
 				content["example"] = resp.example
@@ -291,7 +291,7 @@ func (r *Router) buildComponents(sc *schemaCollector) map[string]any {
 			if resp.Body != nil {
 				respObj["content"] = map[string]any{
 					"application/json": map[string]any{
-						"schema": sc.resolve(resp.Body),
+						"schema": sc.resolveAs(resp.Body, roleResponse),
 					},
 				}
 			}
@@ -349,6 +349,7 @@ func (r *Router) buildComponents(sc *schemaCollector) map[string]any {
 		components["securitySchemes"] = schemes
 	}
 
+	sc.finalizeRequired()
 	if len(sc.schemas) > 0 {
 		components["schemas"] = sc.schemas
 	}
